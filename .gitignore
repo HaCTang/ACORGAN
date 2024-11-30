@@ -3,6 +3,7 @@ data/
 epoch_data/
 ckpt/
 checkpoints/
+eval_classifier/
 *.npy
 *.csv
 *.pth

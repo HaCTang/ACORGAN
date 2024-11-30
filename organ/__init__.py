@@ -12,6 +12,7 @@ from organ.wgenerator import WGenerator
 from organ.rollout import Rollout
 from organ.discriminator import Discriminator
 from organ.wdiscriminator import WDiscriminator
+from organ.piror_classifier import prior_classifier
 
 #from organ.discriminator import WDiscriminator as Discriminator
 
@@ -703,7 +704,11 @@ class ORGAN(object):
                 # print results
                 mean_d_loss = np.mean(supervised_d_losses)
                 t_bar.set_postfix(D_loss=mean_d_loss)
-
+                
+        if self.CLASS_NUM > 1:
+            prior_classifier(self.positive_samples)
+            print('\nCLASSIFIER TRAINING DONE')
+        
         self.PRETRAINED = True
         return
 
