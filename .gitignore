@@ -1,0 +1,8 @@
+utils/
+data/
+epoch_data/
+ckpt/
+checkpoints/
+*.npy
+*.csv
+*.pth
