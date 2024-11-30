@@ -130,7 +130,7 @@ class ORGAN(object):
         if 'START_TOKEN' in params:
             self.START_TOKEN = params['START_TOKEN']
         else:
-            self.START_TOKEN = 0
+            self.START_TOKEN = 1
 
         if 'SAMPLE_NUM' in params:
             self.SAMPLE_NUM = params['SAMPLE_NUM']
@@ -228,9 +228,9 @@ class ORGAN(object):
         self.molecules, _ = zip(*self.train_samples)
 
         # Process and create vocabulary
-        self.char_dict, self.ord_dict = mm.build_vocab(self.molecules)
+        self.char_dict, self.ord_dict = mm.build_vocab(self.molecules, class_num=self.CLASS_NUM)
         self.NUM_EMB = len(self.char_dict)
-        self.PAD_CHAR = self.ord_dict[self.NUM_EMB - 1]
+        self.PAD_CHAR = '_'
         self.PAD_NUM = self.char_dict[self.PAD_CHAR]
         self.DATA_LENGTH = max(map(len, self.molecules))
         print('Vocabulary:')

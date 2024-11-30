@@ -300,7 +300,7 @@ def verify_sequence(smile):
 # def decode(ords, ord_dict): return unpad(
 #     ''.join([ord_dict[o] for o in ords]))
 
-def build_vocab(smiles=None, pad_char='_', start_char='^'):
+def build_vocab(smiles=None, pad_char='_', start_char='^', class_num:int=1):
     # smile syntax
     chars = []
     # atoms (carbon), replace Cl for Q and Br for W
@@ -325,11 +325,16 @@ def build_vocab(smiles=None, pad_char='_', start_char='^'):
     chars = chars + ['.']
 
     char_dict = {}
+
     char_dict[start_char] = 0
+    for i in range(class_num):
+        #在最后添加class_num个类别
+        char_dict["class_"+str(i)] = i + 1
+    
     for i, c in enumerate(chars):
-        char_dict[c] = i + 1
-    # end and start
-    char_dict[pad_char] = i + 2
+        char_dict[c] = i + 1 + class_num
+    # end and start    
+    char_dict[pad_char] = 0
 
     ord_dict = {v: k for k, v in char_dict.items()}
 
@@ -386,23 +391,38 @@ def encode(smi, max_len, char_dict):
 
 
 def decode(ords, ord_dict):
+    # 过滤掉所有的class标记和start token
+    # filtered_ords = [o for o in ords if not (ord_dict[o].startswith('class_') or ord_dict[o] == '^')]
+    try:
+    # 过滤掉所有的class标记、start token和不在字典中的值
+        filtered_ords = []
+        for o in ords:
+            if o in ord_dict:
+                val = ord_dict[o]
+                if not (val.startswith('class_') or val == '^'):
+                    filtered_ords.append(o)
+        # 解码剩余的序列
+        smi = unpad(''.join([ord_dict[o] for o in filtered_ords]))
+        # negative charges
+        smi = smi.replace('~', '-')
+        smi = smi.replace('!', '-2')
+        smi = smi.replace('&', '-3')
+        # positive charges
+        smi = smi.replace('y', '+3')
+        smi = smi.replace('u', '+2')
+        # hydrogens
+        smi = smi.replace('Z', 'H2')
+        smi = smi.replace('X', 'H3')
+        # replace proxy atoms for double char atoms symbols
+        smi = smi.replace('Q', 'Cl')
+        smi = smi.replace('W', 'Br')
 
-    smi = unpad(''.join([ord_dict[o] for o in ords]))
-    # negative charges
-    smi = smi.replace('~', '-')
-    smi = smi.replace('!', '-2')
-    smi = smi.replace('&', '-3')
-    # positive charges
-    smi = smi.replace('y', '+3')
-    smi = smi.replace('u', '+2')
-    # hydrogens
-    smi = smi.replace('Z', 'H2')
-    smi = smi.replace('X', 'H3')
-    # replace proxy atoms for double char atoms symbols
-    smi = smi.replace('Q', 'Cl')
-    smi = smi.replace('W', 'Br')
-
-    return smi
+        return smi
+    except Exception as e:
+        print(f"Error in decode: {e}")
+        print(f"ords: {ords}")
+        print(f"ord_dict keys: {sorted(ord_dict.keys())}")
+        return '' 
 
 
 def load_train_data(filename):
