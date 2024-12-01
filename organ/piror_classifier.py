@@ -77,16 +77,24 @@ def output_figure(tprs, mean_fpr, output_dir):
     plt.savefig(os.path.join(output_dir, 'roc_curve.pdf'))
 
 # Function to train and evaluate the classifier
-def prior_classifier(filepath):
-    # 获取当前文件的绝对路径
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 构建数据文件的绝对路径
-    data_path = os.path.abspath(os.path.join(current_dir, '..', 'data', 'train_NAPro.csv'))
+def prior_classifier(data, from_file=False):
+    """Train and evaluate the classifier
     
+    Args:
+        data: Either a file path (if from_file=True) or a list of [smiles, label] pairs
+        from_file: Boolean indicating whether data is a file path
+    """
     # Load and prepare data
-    data = classifier_data_loader(data_path)
-    descriptor_df = calculate_descriptors(data['smiles'])
-    descriptor_df['label'] = data['label']
+    if from_file:
+        # 从文件加载数据
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.abspath(os.path.join(current_dir, '..', 'data', data))
+        data = classifier_data_loader(data_path)
+    
+    # 计算分子描述符
+    smiles_list, labels = zip(*data)
+    descriptor_df = calculate_descriptors(smiles_list)
+    descriptor_df['label'] = labels
     descriptor_df = descriptor_df.dropna()
     
     X = descriptor_df.drop('label', axis=1)
@@ -97,6 +105,7 @@ def prior_classifier(filepath):
     clf, tprs, mean_fpr = model_training(X, y)
     
     # Output figure
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(current_dir, '..', 'eval_classifier')
     output_figure(tprs, mean_fpr, output_dir)
     
