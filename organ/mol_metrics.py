@@ -334,7 +334,7 @@ def build_vocab(smiles=None, pad_char='_', start_char='^', class_num:int=1):
     for i, c in enumerate(chars):
         char_dict[c] = i + 1 + class_num
     # end and start    
-    char_dict[pad_char] = 0
+    char_dict[pad_char] = len(chars) + class_num + 1
 
     ord_dict = {v: k for k, v in char_dict.items()}
 

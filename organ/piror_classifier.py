@@ -38,7 +38,7 @@ def calculate_descriptors(smiles_list, descriptor_names:list=None):
 # Function to train the model
 def model_training(X, y):
     clf = RandomForestClassifier(n_estimators=100, random_state=42)
-    skf = StratifiedKFold(n_splits=5)
+    skf = StratifiedKFold(n_splits=5, shuffle=True)
     auc_scores = []
     mean_fpr = np.linspace(0, 1, 100)
     tprs = []
@@ -86,12 +86,12 @@ def prior_classifier(data, from_file=False):
     """
     # Load and prepare data
     if from_file:
-        # 从文件加载数据
+        # Load data from file
         current_dir = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.abspath(os.path.join(current_dir, '..', 'data', data))
         data = classifier_data_loader(data_path)
     
-    # 计算分子描述符
+    # Calculate molecular descriptors
     smiles_list, labels = zip(*data)
     descriptor_df = calculate_descriptors(smiles_list)
     descriptor_df['label'] = labels

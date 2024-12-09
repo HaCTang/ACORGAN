@@ -152,6 +152,10 @@ class ORGAN(object):
             self.LAMBDA = params['LAMBDA']
         else:
             self.LAMBDA = 0.5
+        if 'LAMBDA_C' in params:
+            self.LAMBDA_C = params['LAMBDA_C']
+        else:
+            self.LAMBDA_C = 0.5
 
         # In case this parameter is not specified by the user,
         # it will be determined later, in the training set
@@ -211,6 +215,7 @@ class ORGAN(object):
         self.PRETRAINED = False
         self.SESS_LOADED = False
         self.USERDEF_METRIC = False
+        self.PRIOR_CLASSIFIER = False
 
     def load_training_set(self, file):
         """Specifies a training set for the model. It also finishes
@@ -704,33 +709,35 @@ class ORGAN(object):
                 # print results
                 mean_d_loss = np.mean(supervised_d_losses)
                 t_bar.set_postfix(D_loss=mean_d_loss)
-                
-        if self.CLASS_NUM > 1:
-            prior_classifier(self.positive_samples)
-            print('\nCLASSIFIER TRAINING DONE')
         
         self.PRETRAINED = True
         return
 
-    def generate_samples(self, num, label_input=False):
+    def generate_samples(self, num, label_input=False, target_class=None):
         """Generates molecules.
 
         Arguments
         -----------
-            - num. Integer 表示要生成的分子数量
-            - label_input. Boolean 是否将标签作为输入
-
+            - num. Integer number of molecules to generate
+            - label_input. Boolean whether to use target class as input
+            - target_class. Integer target class label
         """
         generated_samples = []
-
+        
         for _ in range(int(num / self.GEN_BATCH_SIZE)):
-            for class_label in range(0, self.CLASS_NUM):
-                # 创建class_label张量
-                class_labels = [class_label] * self.GEN_BATCH_SIZE
+            if target_class is False:
+                for class_label in range(0, self.CLASS_NUM):
+                    # tensor of class labels    
+                    class_labels = [class_label] * self.GEN_BATCH_SIZE
+                    samples = self.generator.generate(self.sess, class_labels, label_input)
+                    # add generated samples and class labels
+                    for i in range(self.GEN_BATCH_SIZE):
+                        generated_samples.append([samples[i].tolist(), class_label])
+            else:
+                class_labels = [target_class] * self.GEN_BATCH_SIZE
                 samples = self.generator.generate(self.sess, class_labels, label_input)
-                # 将生成的样本和对应的标签组合
                 for i in range(self.GEN_BATCH_SIZE):
-                    generated_samples.append([samples[i].tolist(), class_label])
+                    generated_samples.append([samples[i].tolist(), target_class])
 
         return generated_samples
 
@@ -751,7 +758,7 @@ class ORGAN(object):
         #np.set_printoptions(precision=8, suppress=False)
         return
 
-    def train(self, ckpt_dir='checkpoints/'):
+    def organ_train(self, ckpt_dir='checkpoints/'):
         """Trains the model. If necessary, also includes pretraining."""
 
         if not self.PRETRAINED and not self.SESS_LOADED:
@@ -910,3 +917,230 @@ class ORGAN(object):
                 print('\nModel saved at {}'.format(path))
 
         print('\n######### FINISHED #########')
+        
+    def prior_classifier_fn(self, samples, class_labels, model_classifier):
+        """Calculate rewards for generated samples using classifier
+        
+        Args:
+            samples: generated samples
+            class_labels: target class labels 
+            model_classifier: trained classifier model
+        
+        Returns:
+            rewards: reward values array
+        """
+        from organ.piror_classifier import prior_classifier, batch_predict
+        
+        # Decode sequences as SMILES strings
+        decoded = [mm.decode(sample, self.ord_dict) for sample in samples]
+        
+        # 过滤掉无效的分子
+        valid_pairs = []
+        for smiles, label in zip(decoded, class_labels):
+            if mm.verify_sequence(smiles):
+                valid_pairs.append((smiles, label))
+                
+        if not valid_pairs:
+            # 如果没有有效分子,返回全0奖励
+            return np.zeros(len(samples))
+            
+        valid_smiles, valid_labels = zip(*valid_pairs)
+        
+        # Use classifier to batch predict
+        predictions = batch_predict(valid_smiles, model=model_classifier)
+        
+        # 创建一个与输入样本等长的奖励数组
+        rewards = np.zeros(len(samples))
+        
+        # 为有效分子计算奖励
+        valid_idx = 0
+        for i, (smiles, target_class) in enumerate(zip(decoded, class_labels)):
+            if mm.verify_sequence(smiles):
+                pred = predictions[valid_idx]
+                if pred['success']:
+                    if pred['prediction'] == target_class:
+                        rewards[i] = pred['probability']
+                    else:
+                        rewards[i] = 1 - pred['probability']
+                valid_idx += 1
+                
+        # 计算唯一性权重
+        valid_decoded = [s for s in decoded if mm.verify_sequence(s)]
+        if valid_decoded:
+            pct_unique = len(set(valid_decoded)) / len(valid_decoded)
+            for i, smiles in enumerate(decoded):
+                if mm.verify_sequence(smiles):
+                    weights = pct_unique / valid_decoded.count(smiles)
+                    rewards[i] *= weights
+                    
+        return rewards
+    
+    def report_classify_results(self, prior_classifier_fn, samples, class_labels, ord_dict):
+        """report classify results
+        
+        Args:
+            prior_classifier_fn: classify reward function
+            samples: generated samples
+            class_labels: target class labels
+            ord_dict: character mapping dictionary
+        """
+        decoded = [mm.decode(sample, ord_dict) for sample in samples]
+        
+        valid_count = sum(1 for s in decoded if mm.verify_sequence(s))
+        valid_ratio = valid_count / len(decoded)
+        
+        # Calculate classify accuracy
+        rewards = prior_classifier_fn(samples, class_labels)
+        accuracy = np.mean(rewards > 0.5)
+        
+        print('\nClassify results:')
+        print('------------------------')
+        print(f'Valid molecule ratio: {valid_ratio:.3f}')
+        print(f'Classify accuracy: {accuracy:.3f}')
+        print(f'Average reward: {np.mean(rewards):.3f}')
+        print(f'Max reward: {np.max(rewards):.3f}')
+        print(f'Min reward: {np.min(rewards):.3f}')
+        print('------------------------\n')
+        
+    def conditional_train(self, ckpt_dir='checkpoints/', gen_steps=50):
+        """Conditional training
+        
+        Args:
+            ckpt_dir: checkpoint directory 
+            gen_steps: number of generator steps
+        """
+        
+        if not self.PRETRAINED and not self.SESS_LOADED:
+
+            self.sess.run(tf.global_variables_initializer())
+            self.pretrain()
+
+            if not os.path.exists(ckpt_dir):
+                os.makedirs(ckpt_dir)
+            ckpt_file = os.path.join(ckpt_dir,
+                                     '{}_pretrain_ckpt'.format(self.PREFIX))
+            saver = tf.train.Saver()
+            path = saver.save(self.sess, ckpt_file)
+            if self.verbose:
+                print('Pretrain saved at {}'.format(path))
+        
+        if self.CLASS_NUM > 1 and not self.PRIOR_CLASSIFIER:
+            prior_classifier(self.train_samples)
+            print('\nClassifier training completed')
+            self.PRIOR_CLASSIFIER = True
+
+        if self.PRIOR_CLASSIFIER:
+            from organ.piror_classifier import load_model
+            classifier_model = load_model()                   
+            def batch_reward(samples, train_samples=None):
+                # Assign target class labels to each sample
+                # class_labels = [class_label] * len(samples)  # class_idx is the current training generator class
+                return self.prior_classifier_fn(samples, class_labels, classifier_model)            
+            
+        if not hasattr(self, 'class_rollout'):
+            self.class_rollout = Rollout(self.generator, 0.8, self.PAD_NUM)
+            
+        if self.verbose:
+            print('\nSTARTING TRAINING')
+            print('============================\n')
+            
+        total_steps = gen_steps if gen_steps is not None else self.TOTAL_BATCH
+        
+        losses = defaultdict(list)
+        t_bar = trange(total_steps)
+        for nbatch in t_bar:
+            for class_label in range(0, self.CLASS_NUM):
+                if nbatch % 10 == 0:
+                    gen_samples = self.generate_samples(self.BIG_SAMPLE_NUM, 
+                                                     label_input=True,
+                                                     target_class=class_label)
+                    gen_molecules, class_labels = zip(*gen_samples)
+                    self.report_classify_results(
+                        lambda x, y: self.prior_classifier_fn(x, y, classifier_model),
+                        gen_molecules,
+                        class_labels, 
+                        self.ord_dict
+                    )
+                class_labels = [class_label] * self.GEN_BATCH_SIZE
+                samples = self.generator.generate(self.sess, class_labels, label_input=True)
+                rewards = self.class_rollout.get_reward(
+                    self.sess, samples, 16, self.discriminator,
+                    batch_reward, self.LAMBDA_C)
+                g_loss = self.generator.generator_step(
+                    self.sess, samples, rewards)
+                losses['G-loss'].append(g_loss)
+                self.generator.g_count = self.generator.g_count + 1
+                
+            t_bar.set_postfix(G_loss=np.mean(losses['G-loss']))
+            self.class_rollout.update_params()
+
+            if self.LAMBDA_C != 0:
+                print('\nDISCRIMINATOR TRAINING')
+                print('============================\n')
+                for i in range(self.DIS_EPOCHS):
+                    print('Discriminator epoch {}...'.format(i + 1))
+                    
+                    for class_label in range(0, self.CLASS_NUM):
+                        negative_samples = self.generate_samples(self.POSITIVE_NUM, 
+                                                                  label_input=True,
+                                                                  target_class=class_label)
+                        dis_x_train, dis_y_train = self.dis_loader.load_train_data(
+                            self.positive_samples, negative_samples)
+                        dis_batches = self.dis_loader.batch_iter(
+                            zip(dis_x_train, dis_y_train),
+                            self.DIS_BATCH_SIZE, self.DIS_EPOCHS
+                        )
+                                            
+                        d_losses, ce_losses, l2_losses, w_loss = [], [], [], []
+                        for batch in dis_batches:
+                            x_batch, y_batch = zip(*batch)
+                            x_data, x_label = zip(*x_batch)
+                            _, d_loss, ce_loss, l2_loss, w_loss = self.discriminator.train(
+                                self.sess, x_data, y_batch, self.DIS_DROPOUT)
+                            d_losses.append(d_loss)
+                            ce_losses.append(ce_loss)
+                            l2_losses.append(l2_loss)
+
+                    losses['D-loss'].append(np.mean(d_losses))
+                    losses['CE-loss'].append(np.mean(ce_losses))
+                    losses['L2-loss'].append(np.mean(l2_losses))
+                    losses['WGAN-loss'].append(np.mean(l2_losses))
+
+                    self.discriminator.d_count = self.discriminator.d_count + 1
+
+                print('\nDiscriminator trained.')
+                
+            if nbatch % self.EPOCH_SAVES == 0 or nbatch == total_steps - 1:
+                model_saver = tf.train.Saver()
+                ckpt_file = os.path.join(
+                    ckpt_dir,
+                    f'{self.PREFIX}_{nbatch}.ckpt'
+                )
+                path = model_saver.save(self.sess, ckpt_file)
+                print('\nModel saved at {}'.format(path))
+            
+        # save model
+        model_saver = tf.train.Saver()
+        ckpt_file = os.path.join(
+            ckpt_dir,
+            f'{self.PREFIX}_final.ckpt'
+        )
+        path = model_saver.save(self.sess, ckpt_file)
+        print('\nModel saved at {}'.format(path))
+
+        print('\n######### FINISHED #########')
+        
+    def output_samples(self, num_samples, output_dir='epoch_data/', 
+                       label_input=False, target_class=None):
+        """
+        Output generated samples to a csv file
+        """
+        generated_samples = self.generate_samples(num_samples,
+                                                   label_input=label_input,
+                                                   target_class=target_class)
+        decoded = [mm.decode(sample[0], self.ord_dict) for sample in generated_samples]
+        verified_decoded = [s for s in decoded if mm.verify_sequence(s)]
+        df = pd.DataFrame(verified_decoded, columns=['molecule'])
+        df['class'] = target_class
+        df.to_csv(f'{output_dir}/{self.PREFIX}_samples.csv', index=False)
+        print(f'Generated samples saved to {output_dir}/{self.PREFIX}_samples.csv')

@@ -191,7 +191,7 @@ class WGenerator(object):
         #self.g_count += 1
         return cur_g_count, _summ
 
-    def generate(self, session):
+    def generate(self, session, class_labels=None, label_input=False):
         """Generates a batch of samples."""
         outputs = session.run([self.gen_x])
         return outputs[0]

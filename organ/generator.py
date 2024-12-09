@@ -179,24 +179,25 @@ class Generator(object):
         #self.g_count += 1
         return cur_g_count, _summ
 
-    def generate(self, session, class_labels, label_input=False):
-        """生成一批样本。
+    def generate(self, session, class_labels=None, label_input=False):
+        """generate samples
         
         Arguments:
             session: TensorFlow session
-            class_labels: 类别标签列表
-            label_input: 是否将标签作为输入
+            class_labels: list of class labels
+            label_input: whether to use class labels as input
         """
         if label_input:
-            # 如果使用标签作为输入，修改start_token
-            start_tokens = [self.start_token[i] * class_labels[i] for i in range(self.batch_size)]
+            # if using class labels as input, modify start_token
+            start_token_value = session.run(self.start_token)  # get actual token value first
+            start_tokens = [start_token_value[i] * int(class_labels[i]) for i in range(self.batch_size)]
             feed_dict = {
                 self.start_token: start_tokens
             }
         else:
             feed_dict = {}
         
-        # 添加class_label到feed_dict
+        # add class_label to feed_dict
         if hasattr(self, 'class_label_ph'):
             feed_dict[self.class_label_ph] = class_labels
             
