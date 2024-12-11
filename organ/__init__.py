@@ -235,6 +235,13 @@ class ORGAN(object):
 
         # Process and create vocabulary
         self.char_dict, self.ord_dict = mm.build_vocab(self.molecules, class_num=self.CLASS_NUM)
+        
+        # Calculate the quartiles of the length of the molecules
+        self.len_list = [len(mol) for mol in self.molecules]
+        self.average_len = np.mean(self.len_list)
+        self.Q1 = np.percentile(self.len_list, 25)
+        self.Q3 = np.percentile(self.len_list, 75)
+        
         self.NUM_EMB = len(self.char_dict)
         self.PAD_CHAR = '_'
         self.PAD_NUM = self.char_dict[self.PAD_CHAR]
@@ -958,10 +965,14 @@ class ORGAN(object):
             if mm.verify_sequence(smiles):
                 pred = predictions[valid_idx]
                 if pred['success']:
-                    if pred['prediction'] == target_class:
-                        rewards[i] = pred['probability']
+                    if len(smiles) >= self.Q1:
+                        if pred['prediction'] == target_class:
+                            # 奖励跟分子长度有关
+                            rewards[i] = pred['probability'] * (len(smiles)/self.average_len)
+                        else:
+                            rewards[i] = 1 - pred['probability']
                     else:
-                        rewards[i] = 1 - pred['probability']
+                        rewards[i] = 0
                 valid_idx += 1
                 
         # 计算唯一性权重
@@ -1142,5 +1153,5 @@ class ORGAN(object):
         verified_decoded = [s for s in decoded if mm.verify_sequence(s)]
         df = pd.DataFrame(verified_decoded, columns=['molecule'])
         df['class'] = target_class
-        df.to_csv(f'{output_dir}/{self.PREFIX}_samples.csv', index=False)
-        print(f'Generated samples saved to {output_dir}/{self.PREFIX}_samples.csv')
+        df.to_csv(f'{output_dir}/{self.PREFIX}_{target_class}_samples.csv', index=False)
+        print(f'Generated samples saved to {output_dir}/{self.PREFIX}_{target_class}_samples.csv')
