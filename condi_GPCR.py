@@ -7,7 +7,8 @@ model = ORGAN('cond_GPCR', 'mol_metrics', params={
     'PRETRAIN_GEN_EPOCHS': 250,
     'MAX_LENGTH': 100,
     'LAMBDA': 0.5,
-    'EPOCH_SAVES':4
+    'EPOCH_SAVES':4,
+    "DIS_EPOCHS": 2
 })
 
 model.load_training_set('./data/train_GPCRKinase.csv')

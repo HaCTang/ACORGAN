@@ -925,7 +925,7 @@ class ORGAN(object):
 
         print('\n######### FINISHED #########')
         
-    def prior_classifier_fn(self, samples, class_labels, model_classifier):
+    def prior_classifier_fn(self, samples, class_labels, model_classifier, return_accuracy=False):
         """Calculate rewards for generated samples using classifier
         
         Args:
@@ -961,19 +961,25 @@ class ORGAN(object):
         
         # 为有效分子计算奖励
         valid_idx = 0
+        num_right = 0
         for i, (smiles, target_class) in enumerate(zip(decoded, class_labels)):
             if mm.verify_sequence(smiles):
                 pred = predictions[valid_idx]
                 if pred['success']:
+                    if target_class == pred['prediction']:
+                        num_right += 1
                     if len(smiles) >= self.Q1:
-                        if pred['prediction'] == target_class:
+                        if target_class == 1:
                             # 奖励跟分子长度有关
                             rewards[i] = pred['probability'] * (len(smiles)/self.average_len)
                         else:
-                            rewards[i] = 1 - pred['probability']
+                            rewards[i] = (1 - pred['probability']) * (len(smiles)/self.average_len)
                     else:
                         rewards[i] = 0
                 valid_idx += 1
+        
+        # 计算平均准确率
+        accuracy = num_right / len(valid_smiles)
                 
         # 计算唯一性权重
         valid_decoded = [s for s in decoded if mm.verify_sequence(s)]
@@ -984,7 +990,7 @@ class ORGAN(object):
                     weights = pct_unique / valid_decoded.count(smiles)
                     rewards[i] *= weights
                     
-        return rewards
+        return (rewards, accuracy) if return_accuracy else rewards
     
     def report_classify_results(self, prior_classifier_fn, samples, class_labels, ord_dict):
         """report classify results
@@ -1001,8 +1007,7 @@ class ORGAN(object):
         valid_ratio = valid_count / len(decoded)
         
         # Calculate classify accuracy
-        rewards = prior_classifier_fn(samples, class_labels)
-        accuracy = np.mean(rewards > 0.5)
+        rewards, accuracy = prior_classifier_fn(samples, class_labels, return_accuracy=True) 
         
         print('\nClassify results:')
         print('------------------------')
@@ -1061,7 +1066,7 @@ class ORGAN(object):
         t_bar = trange(total_steps)
         for nbatch in t_bar:
             for class_label in range(0, self.CLASS_NUM):
-                if nbatch % 10 == 0:
+                if nbatch % 5 == 0:
                     gen_samples = self.generate_samples(self.BIG_SAMPLE_NUM, 
                                                      label_input=True,
                                                      target_class=class_label)
