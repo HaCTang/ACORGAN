@@ -925,7 +925,7 @@ class ORGAN(object):
 
         print('\n######### FINISHED #########')
         
-    def prior_classifier_fn(self, samples, class_labels, model_classifier, return_accuracy=False):
+    def prior_classifier_fn(self, samples, class_labels, model_classifier):
         """Calculate rewards for generated samples using classifier
         
         Args:
@@ -979,7 +979,7 @@ class ORGAN(object):
                 valid_idx += 1
         
         # 计算平均准确率
-        accuracy = num_right / len(valid_smiles)
+        self.classify_accuracy = num_right / len(valid_smiles)
                 
         # 计算唯一性权重
         valid_decoded = [s for s in decoded if mm.verify_sequence(s)]
@@ -990,7 +990,7 @@ class ORGAN(object):
                     weights = pct_unique / valid_decoded.count(smiles)
                     rewards[i] *= weights
                     
-        return (rewards, accuracy) if return_accuracy else rewards
+        return rewards
     
     def report_classify_results(self, prior_classifier_fn, samples, class_labels, ord_dict):
         """report classify results
@@ -1007,12 +1007,12 @@ class ORGAN(object):
         valid_ratio = valid_count / len(decoded)
         
         # Calculate classify accuracy
-        rewards, accuracy = prior_classifier_fn(samples, class_labels, return_accuracy=True) 
+        rewards = prior_classifier_fn(samples, class_labels) 
         
         print('\nClassify results:')
         print('------------------------')
         print(f'Valid molecule ratio: {valid_ratio:.3f}')
-        print(f'Classify accuracy: {accuracy:.3f}')
+        print(f'Classify accuracy: {self.classify_accuracy:.3f}')
         print(f'Average reward: {np.mean(rewards):.3f}')
         print(f'Max reward: {np.max(rewards):.3f}')
         print(f'Min reward: {np.min(rewards):.3f}')

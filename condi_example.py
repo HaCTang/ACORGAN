@@ -12,16 +12,17 @@ model = ORGAN('cond_NAPro', 'mol_metrics', params={
     "DIS_EMB_DIM": 32, 
     "DIS_FILTER_SIZES": [1, 2, 3, 4, 5, 8, 10, 15], 
     "DIS_NUM_FILTERS": [50, 50, 50, 50, 50, 50, 50, 75], 
-    "DIS_DROPOUT": 0.75
+    "DIS_DROPOUT": 0.75,
+    "DIS_EPOCHS": 2
 })
 
 model.load_training_set('./data/train_NAPro.csv')
 model.set_training_program(['diversity'], [2])
 model.load_metrics()
 
-# model.load_prev_pretraining(ckpt='ckpt/cond_test_pretrain_ckpt')
+# model.load_prev_pretraining(ckpt='ckpt/cond_NAPro_pretrain_ckpt')
 # model.organ_train(ckpt_dir='ckpt')
-# model.load_prev_training(ckpt='./checkpoints/cond_test/cond_test_9.ckpt')
+model.load_prev_training(ckpt='./checkpoints/cond_NAPro/cond_NAPro_1.ckpt')
 model.conditional_train(ckpt_dir='ckpt', gen_steps=30)
 
 # model.load_prev_training(ckpt='ckpt/cond_NAPro_8.ckpt')

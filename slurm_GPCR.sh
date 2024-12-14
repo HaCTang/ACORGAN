@@ -3,7 +3,7 @@
 #SBATCH --partition=smp             
 #SBATCH --ntasks=1                  
 #SBATCH --cpus-per-task=32        
-#SBATCH --time=120:00:00              
+#SBATCH --time=48:00:00              
 #SBATCH --mem=16G                  
 #SBATCH --output=GPCR_penalty.log       
 #SBATCH --error=GPCR_penalty_ERROR.log  
