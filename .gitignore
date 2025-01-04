@@ -1,6 +1,6 @@
 utils/
 # data/
-# epoch_data/
+epoch_data/
 ckpt/
 checkpoints/
 eval_classifier/
