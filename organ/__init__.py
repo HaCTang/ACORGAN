@@ -930,66 +930,20 @@ class ORGAN(object):
         
         Args:
             samples: generated samples
-            class_labels: target class labels 
+            class_labels: target class labels
             model_classifier: trained classifier model
         
         Returns:
             rewards: reward values array
-        """
-        from organ.piror_classifier import prior_classifier, batch_predict
-        
+        """       
         # Decode sequences as SMILES strings
-        decoded = [mm.decode(sample, self.ord_dict) for sample in samples]
-        
-        # 过滤掉无效的分子
-        valid_pairs = []
-        for smiles, label in zip(decoded, class_labels):
-            if mm.verify_sequence(smiles):
-                valid_pairs.append((smiles, label))
+        decoded = [mm.decode(sample, self.ord_dict) for sample in samples]    
+        # print("decoded:", decoded)
+        rewards = mm.batch_classifier(decoded, self.train_samples, class_labels)                
+        pct_unique = len(list(set(decoded))) / float(len(decoded))
+        weights = np.array([pct_unique / float(decoded.count(sample)) for sample in decoded])
+        rewards = np.array(rewards) * weights
                 
-        if not valid_pairs:
-            # 如果没有有效分子,返回全0奖励
-            return np.zeros(len(samples))
-            
-        valid_smiles, valid_labels = zip(*valid_pairs)
-        
-        # Use classifier to batch predict
-        predictions = batch_predict(valid_smiles, model=model_classifier)
-        
-        # 创建一个与输入样本等长的奖励数组
-        rewards = np.zeros(len(samples))
-        
-        # 为有效分子计算奖励
-        valid_idx = 0
-        num_right = 0
-        for i, (smiles, target_class) in enumerate(zip(decoded, class_labels)):
-            if mm.verify_sequence(smiles):
-                pred = predictions[valid_idx]
-                if pred['success']:
-                    if target_class == pred['prediction']:
-                        num_right += 1
-                    if len(smiles) >= self.Q1:
-                        if target_class == 1:
-                            # 奖励跟分子长度有关
-                            rewards[i] = pred['probability'] * (len(smiles)/self.average_len)
-                        else:
-                            rewards[i] = (1 - pred['probability']) * (len(smiles)/self.average_len)
-                    else:
-                        rewards[i] = 0
-                valid_idx += 1
-        
-        # 计算平均准确率
-        self.classify_accuracy = num_right / len(valid_smiles)
-                
-        # 计算唯一性权重
-        valid_decoded = [s for s in decoded if mm.verify_sequence(s)]
-        if valid_decoded:
-            pct_unique = len(set(valid_decoded)) / len(valid_decoded)
-            for i, smiles in enumerate(decoded):
-                if mm.verify_sequence(smiles):
-                    weights = pct_unique / valid_decoded.count(smiles)
-                    rewards[i] *= weights
-                    
         return rewards
     
     def report_classify_results(self, prior_classifier_fn, samples, class_labels, ord_dict):
@@ -1012,11 +966,12 @@ class ORGAN(object):
         print('\nClassify results:')
         print('------------------------')
         print(f'Valid molecule ratio: {valid_ratio:.3f}')
-        print(f'Classify accuracy: {self.classify_accuracy:.3f}')
+        # print(f'Classify accuracy: {self.classify_accuracy:.3f}')
         print(f'Average reward: {np.mean(rewards):.3f}')
         print(f'Max reward: {np.max(rewards):.3f}')
         print(f'Min reward: {np.min(rewards):.3f}')
         print('------------------------\n')
+        
         
     def conditional_train(self, ckpt_dir='checkpoints/', gen_steps=50):
         """Conditional training
@@ -1059,33 +1014,44 @@ class ORGAN(object):
         if self.verbose:
             print('\nSTARTING TRAINING')
             print('============================\n')
-            
+        
         total_steps = gen_steps if gen_steps is not None else self.TOTAL_BATCH
         
+        results_rows = []
         losses = defaultdict(list)
         t_bar = trange(total_steps)
         for nbatch in t_bar:
+            
+            results = OrderedDict({'exp_name': self.PREFIX})
+            results['Batch'] = nbatch
             for class_label in range(0, self.CLASS_NUM):
-                if nbatch % 5 == 0:
+                if nbatch % 10 == 0:
                     gen_samples = self.generate_samples(self.BIG_SAMPLE_NUM, 
                                                      label_input=True,
                                                      target_class=class_label)
-                    gen_molecules, class_labels = zip(*gen_samples)
-                    self.report_classify_results(
-                        lambda x, y: self.prior_classifier_fn(x, y, classifier_model),
-                        gen_molecules,
-                        class_labels, 
-                        self.ord_dict
-                    )
-                class_labels = [class_label] * self.GEN_BATCH_SIZE
-                samples = self.generator.generate(self.sess, class_labels, label_input=True)
-                rewards = self.class_rollout.get_reward(
-                    self.sess, samples, 16, self.discriminator,
-                    batch_reward, self.LAMBDA_C)
-                g_loss = self.generator.generator_step(
-                    self.sess, samples, rewards)
-                losses['G-loss'].append(g_loss)
-                self.generator.g_count = self.generator.g_count + 1
+                else:
+                    gen_samples = self.generate_samples(self.SAMPLE_NUM,
+                                                     label_input=True,
+                                                     target_class=class_label)
+                gen_molecules, class_labels = zip(*gen_samples)
+                self.report_classify_results(
+                    lambda x, y: self.prior_classifier_fn(x, y, classifier_model),
+                    gen_molecules,
+                    class_labels, 
+                    self.ord_dict
+                )
+                mm.compute_results(batch_reward,
+                                   gen_samples, self.train_samples, self.ord_dict, results=results)
+                for it in range(self.GEN_ITERATIONS):
+                    class_labels = [class_label] * self.GEN_BATCH_SIZE
+                    samples = self.generator.generate(self.sess, class_labels, label_input=True)
+                    rewards = self.class_rollout.get_reward(
+                        self.sess, samples, 16, self.discriminator,
+                        batch_reward, self.LAMBDA_C)
+                    g_loss = self.generator.generator_step(
+                        self.sess, samples, rewards)
+                    losses['G-loss'].append(g_loss)
+                    self.generator.g_count = self.generator.g_count + 1
                 
             t_bar.set_postfix(G_loss=np.mean(losses['G-loss']))
             self.class_rollout.update_params()
@@ -1125,8 +1091,14 @@ class ORGAN(object):
                     self.discriminator.d_count = self.discriminator.d_count + 1
 
                 print('\nDiscriminator trained.')
+            
+            results_rows.append(results)
                 
             if nbatch % self.EPOCH_SAVES == 0 or nbatch == total_steps - 1:
+                if results_rows is not None:
+                    df = pd.DataFrame(results_rows)
+                    df.to_csv('{}_results.csv'.format(
+                        self.PREFIX), index=False)
                 model_saver = tf.train.Saver()
                 ckpt_file = os.path.join(
                     ckpt_dir,

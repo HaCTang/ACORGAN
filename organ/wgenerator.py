@@ -191,9 +191,34 @@ class WGenerator(object):
         #self.g_count += 1
         return cur_g_count, _summ
 
+    # def generate(self, session, class_labels=None, label_input=False):
+    #     """Generates a batch of samples."""
+    #     outputs = session.run([self.gen_x])
+    #     return outputs[0]
+    
     def generate(self, session, class_labels=None, label_input=False):
-        """Generates a batch of samples."""
-        outputs = session.run([self.gen_x])
+        """generate samples
+        
+        Arguments:
+            session: TensorFlow session
+            class_labels: list of class labels
+            label_input: whether to use class labels as input
+        """
+        if label_input:
+            # if using class labels as input, modify start_token
+            start_token_value = session.run(self.start_token)  # get actual token value first
+            start_tokens = [start_token_value[i] * int(class_labels[i]) for i in range(self.batch_size)]
+            feed_dict = {
+                self.start_token: start_tokens
+            }
+        else:
+            feed_dict = {}
+        
+        # add class_label to feed_dict
+        if hasattr(self, 'class_label_ph'):
+            feed_dict[self.class_label_ph] = class_labels
+            
+        outputs = session.run([self.gen_x], feed_dict=feed_dict)
         return outputs[0]
 
     def pretrain_step(self, session, x):
@@ -223,7 +248,7 @@ class WGenerator(object):
         self.Wi = tf.Variable(self.init_matrix(
             [self.emb_dim, self.hidden_dim]))
         self.Ui = tf.Variable(self.init_matrix(
-            [self.emb_dim, self.hidden_dim]))
+            [self.hidden_dim, self.hidden_dim]))
         self.bi = tf.Variable(self.init_matrix([self.hidden_dim]))
 
         self.Wf = tf.Variable(self.init_matrix(

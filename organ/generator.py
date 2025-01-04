@@ -231,7 +231,7 @@ class Generator(object):
         self.Wi = tf.Variable(self.init_matrix(
             [self.emb_dim, self.hidden_dim]))
         self.Ui = tf.Variable(self.init_matrix(
-            [self.emb_dim, self.hidden_dim]))
+            [self.hidden_dim, self.hidden_dim]))
         self.bi = tf.Variable(self.init_matrix([self.hidden_dim]))
 
         self.Wf = tf.Variable(self.init_matrix(
