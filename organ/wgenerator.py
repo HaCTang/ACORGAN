@@ -221,16 +221,42 @@ class WGenerator(object):
         outputs = session.run([self.gen_x], feed_dict=feed_dict)
         return outputs[0]
 
-    def pretrain_step(self, session, x):
+    def pretrain_step(self, session, x, class_labels=None):
         """Performs a pretraining step on the generator."""
+        if class_labels is not None:
+            start_token_value = session.run(self.start_token)  # get actual token value first
+            start_tokens = [start_token_value[i] * int(class_labels[i]) for i in range(self.batch_size)]
+            feed_dict = {
+                self.start_token: start_tokens,
+                self.x: x
+            }
+        else:
+            feed_dict = {self.x: x}
+            
+        if hasattr(self, 'class_label_ph'):
+            feed_dict[self.class_label_ph] = class_labels
+
         outputs = session.run([self.pretrain_updates, self.pretrain_loss,
-                               self.g_predictions], feed_dict={self.x: x})
+                               self.g_predictions], feed_dict=feed_dict)
         return outputs
 
-    def generator_step(self, sess, samples, rewards):
+    def generator_step(self, sess, samples, rewards, class_labels=None):
         """Performs a training step on the generator."""
-        feed = {self.x: samples, self.rewards: rewards}
-        _, g_loss = sess.run([self.g_updates, self.g_loss], feed_dict=feed)
+        if class_labels is not None:
+            start_token_value = sess.run(self.start_token)  # get actual token value first
+            start_tokens = [start_token_value[i] * int(class_labels[i]) for i in range(self.batch_size)]
+            feed_dict = {
+                self.start_token: start_tokens,
+                self.x: samples,
+                self.rewards: rewards
+            }
+        else:
+            feed_dict = {self.x: samples, self.rewards: rewards}  
+        
+        if hasattr(self, 'class_label_ph'):
+            feed_dict[self.class_label_ph] = class_labels
+
+        _, g_loss = sess.run([self.g_updates, self.g_loss], feed_dict=feed_dict)
         return g_loss
 
     def init_matrix(self, shape):

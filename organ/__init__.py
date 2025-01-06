@@ -668,6 +668,7 @@ class ORGAN(object):
         """Pretrains generator and discriminator."""
 
         self.gen_loader.create_batches(self.positive_samples)
+        # print("self.positive_samples:", self.positive_samples)
         # results = OrderedDict({'exp_name': self.PREFIX})
 
         if self.verbose:
@@ -683,13 +684,16 @@ class ORGAN(object):
                 batch = self.gen_loader.next_batch()
                 x, class_label = zip(*batch)
                 _, g_loss, g_pred = self.generator.pretrain_step(self.sess,
-                                                                 x)
+                                                                 x, class_label)
                 supervised_g_losses.append(g_loss)
             # print results
             mean_g_loss = np.mean(supervised_g_losses)
             t_bar.set_postfix(G_loss=mean_g_loss)
 
         samples = self.generate_samples(self.SAMPLE_NUM)
+        results = OrderedDict({'exp_name': self.PREFIX})
+        mm.compute_results(self.prior_classifier_fn,
+                        samples, self.train_samples, self.ord_dict, results=results)
         self.mle_loader.create_batches(samples)
 
         if self.LAMBDA != 0:
@@ -860,7 +864,7 @@ class ORGAN(object):
             self.rollout.update_params()
 
             # generate for discriminator
-            if self.LAMBDA != 0:
+            if self.LAMBDA_C != 0:
                 print('\nDISCRIMINATOR TRAINING')
                 print('============================\n')
                 for i in range(self.DIS_EPOCHS):
@@ -939,12 +943,25 @@ class ORGAN(object):
         # Decode sequences as SMILES strings
         decoded = [mm.decode(sample, self.ord_dict) for sample in samples]    
         # print("decoded:", decoded)
-        rewards = mm.batch_classifier(decoded, self.train_samples, class_labels)                
         pct_unique = len(list(set(decoded))) / float(len(decoded))
-        weights = np.array([pct_unique / float(decoded.count(sample)) for sample in decoded])
-        rewards = np.array(rewards) * weights
+        rewards = mm.batch_classifier(decoded, self.train_samples, class_labels)  
+        length_scores = mm.batch_length(decoded, max_length=self.MAX_LENGTH-10, min_length=25)
+                    
+        weights = []
+        for i, sample in enumerate(decoded):
+            # 基础weight: 唯一性/重复度
+            base_weight = pct_unique / float(decoded.count(sample))
+            # 将length得分作为权重的调节因子
+            length_weight = length_scores[i]
+            # 组合weight
+            combined_weight = base_weight * (0.2 + 0.8 * length_weight)  # 保证weight不会完全为0
+            weights.append(combined_weight)
+        
+        weights = np.array(weights)              
+        # pct_unique = len(list(set(decoded))) / float(len(decoded))
+        # weights = np.array([pct_unique / float(decoded.count(sample)) for sample in decoded])
                 
-        return rewards
+        return rewards * weights
     
     def report_classify_results(self, prior_classifier_fn, samples, class_labels, ord_dict):
         """report classify results
@@ -1049,7 +1066,7 @@ class ORGAN(object):
                         self.sess, samples, 16, self.discriminator,
                         batch_reward, self.LAMBDA_C)
                     g_loss = self.generator.generator_step(
-                        self.sess, samples, rewards)
+                        self.sess, samples, rewards, class_labels)
                     losses['G-loss'].append(g_loss)
                     self.generator.g_count = self.generator.g_count + 1
                 

@@ -878,6 +878,63 @@ def batch_SA(smiles, train_smiles=None):
     scores = [SA_score(s) if verify_sequence(s) else 0 for s in smiles]
     return scores
 
+def length_score(smile, max_length=80, min_length=15):
+    """计算分子长度的适宜性得分
+    
+    参数:
+        smile: SMILES字符串
+    返回:
+        score: 0-1之间的得分，长度在理想范围内得分高，过长或过短得分低
+    """
+    try:
+        # mol = Chem.MolFromSmiles(smile)
+        # mol = Chem.MolFromSmiles(smile, sanitize=False)
+        # if mol is not None:
+        #     try:
+        #         Chem.SanitizeMol(mol, sanitizeOps=Chem.SANITIZE_FINDRADICALS|
+        #                     Chem.SANITIZE_SETAROMATICITY|
+        #                     Chem.SANITIZE_SETCONJUGATION|
+        #                     Chem.SANITIZE_SETHYBRIDIZATION|
+        #                     Chem.SANITIZE_SYMMRINGS,
+        #                 catchErrors=True)
+        #     except:
+        #         return 0.0
+        # if mol is None:
+        #     return 0.0
+        # n_atoms = mol.GetNumAtoms()
+        n_atoms = len(smile)
+        
+        # 设定理想的原子数范围
+        min_atoms = min_length  # 最小原子数
+        max_atoms = max_length  # 最大原子数
+        Q1 = (max_atoms - min_atoms) // 4
+        opt_min = min_atoms + 1.5*Q1  # 最优范围下限
+        opt_max = max_atoms - Q1  # 最优范围上限
+
+        
+        if n_atoms < min_atoms:
+            # 分子过小，线性增长
+            score = remap(n_atoms, min_atoms, opt_min)
+        elif n_atoms > max_atoms:
+            # 分子过大，得分为0
+            score = 0.0
+        elif opt_min <= n_atoms <= opt_max:
+            # 在最优范围内，满分
+            score = 1.0
+        else:
+            # 在最优范围和最大值之间，线性下降
+            score = remap(n_atoms, opt_max, max_atoms)
+            score = 1.0 - score  # 反转，使得越接近最优范围分数越高
+            
+        return np.clip(score, 0.0, 1.0)
+    except:
+        return 0.0
+
+def batch_length(smiles, max_length=80, min_length=15, train_smiles=None):
+    """批量计算分子长度得分"""
+    scores = [length_score(s, max_length=max_length, min_length=min_length)
+              if verify_sequence(s) else 0 for s in smiles]
+    return scores
 
 #===== Reward function
 
