@@ -525,7 +525,7 @@ def compute_results(reward, model_samples, train_data, ord_dict,
     
     # save smiles
     if 'Batch' in results.keys():
-        smi_name = '{}_{}'.format(results['exp_name'], results['Batch'])
+        smi_name = '{}_{}_{}'.format(results['exp_name'], results['Batch'], results['class_label'])
         if savesmi == True:
             save_smi(smi_name, verified_samples)
         if savecsv == True:

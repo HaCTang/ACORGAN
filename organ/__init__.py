@@ -690,21 +690,27 @@ class ORGAN(object):
             mean_g_loss = np.mean(supervised_g_losses)
             t_bar.set_postfix(G_loss=mean_g_loss)
 
-        samples = self.generate_samples(self.SAMPLE_NUM)
-        results = OrderedDict({'exp_name': self.PREFIX})
-        mm.compute_results(self.prior_classifier_fn,
-                        samples, self.train_samples, self.ord_dict, results=results)
+        for class_label in range(0, self.CLASS_NUM):
+            samples = self.generate_samples(self.SAMPLE_NUM, label_input=True, target_class=class_label)
+            results = OrderedDict({'exp_name': self.PREFIX})
+            results['class_label'] = class_label
+            mm.compute_results(self.prior_classifier_fn,
+                            samples, self.train_samples, self.ord_dict, results=results)
         self.mle_loader.create_batches(samples)
 
-        if self.LAMBDA != 0:
+        if self.LAMBDA_C != 0:
 
             if self.verbose:
                 print('\nDISCRIMINATOR PRETRAINING')
             t_bar = trange(self.PRETRAIN_DIS_EPOCHS)
             for i in t_bar:
-                negative_samples = self.generate_samples(self.POSITIVE_NUM)
-                dis_x_train, dis_y_train = self.dis_loader.load_train_data(
-                    self.positive_samples, negative_samples)
+                dis_x_train, dis_y_train = [], []   
+                for class_label in range(0, self.CLASS_NUM):    
+                    negative_samples = self.generate_samples(self.POSITIVE_NUM, label_input=True, target_class=class_label)
+                    x1, y1 = self.dis_loader.load_train_data(
+                        self.positive_samples, negative_samples)
+                    dis_x_train.extend(x1)
+                    dis_y_train.extend(y1)
                 dis_batches = self.dis_loader.batch_iter(
                     zip(dis_x_train, dis_y_train), self.DIS_BATCH_SIZE,
                     self.PRETRAIN_DIS_EPOCHS)
@@ -845,6 +851,7 @@ class ORGAN(object):
             print('============================\n')
 
             # results
+            results['class_label'] = None
             mm.compute_results(batch_reward,
                                gen_samples, self.train_samples, self.ord_dict, results=results)
 
@@ -1057,6 +1064,7 @@ class ORGAN(object):
                     class_labels, 
                     self.ord_dict
                 )
+                results['class_label'] = class_label
                 mm.compute_results(batch_reward,
                                    gen_samples, self.train_samples, self.ord_dict, results=results)
                 for it in range(self.GEN_ITERATIONS):
