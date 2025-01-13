@@ -9,5 +9,6 @@ eval_classifier/
 *.pth
 *.log
 *.pyc
+*.sh
 
 !data/train_NAPro.csv
