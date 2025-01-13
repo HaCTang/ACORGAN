@@ -16,13 +16,13 @@ model.load_training_set('./data/train_NAPro.csv')
 # model.set_training_program(['diversity'], [2])
 # model.load_metrics()
 
-# model.load_prev_pretraining(ckpt='ckpt/cond_NAPro_pretrain_ckpt')
+# model.load_prev_pretraining(ckpt='ckpt/try_classifier_15_ckpt')
 # model.organ_train(ckpt_dir='ckpt')
-# model.load_prev_training(ckpt='./checkpoints/cond_NAPro/cond_NAPro_1.ckpt')
+model.load_prev_training(ckpt='./ckpt/try_classifier_15.ckpt')
 model.conditional_train(ckpt_dir='ckpt', gen_steps=30)
 
 # model.load_prev_training(ckpt='ckpt/cond_NAPro_8.ckpt')
 
 # then generate samples
-model.output_samples(10000, label_input=True, target_class=0)
-model.output_samples(10000, label_input=True, target_class=1)
+# model.output_samples(10000, label_input=True, target_class=0)
+# model.output_samples(10000, label_input=True, target_class=1)

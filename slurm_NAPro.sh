@@ -2,8 +2,8 @@
 #SBATCH --job-name=NA_ACseqGAN  
 #SBATCH --partition=smp             
 #SBATCH --ntasks=1                  
-#SBATCH --cpus-per-task=32        
-#SBATCH --time=24:00:00              
+#SBATCH --cpus-per-task=16        
+#SBATCH --time=48:00:00              
 #SBATCH --mem=16G                  
 #SBATCH --output=NA_penalty.log       
 #SBATCH --error=NA_penalty_ERROR.log  

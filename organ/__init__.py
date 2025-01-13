@@ -1048,6 +1048,11 @@ class ORGAN(object):
             
             results = OrderedDict({'exp_name': self.PREFIX})
             results['Batch'] = nbatch
+            print('\nBatch n. {}'.format(nbatch))
+            print('============================\n')
+            print('\nGENERATOR TRAINING')
+            print('============================\n')
+
             for class_label in range(0, self.CLASS_NUM):
                 if nbatch % 10 == 0:
                     gen_samples = self.generate_samples(self.BIG_SAMPLE_NUM, 
@@ -1064,9 +1069,11 @@ class ORGAN(object):
                     class_labels, 
                     self.ord_dict
                 )
+                
                 results['class_label'] = class_label
                 mm.compute_results(batch_reward,
                                    gen_samples, self.train_samples, self.ord_dict, results=results)
+                
                 for it in range(self.GEN_ITERATIONS):
                     class_labels = [class_label] * self.GEN_BATCH_SIZE
                     samples = self.generator.generate(self.sess, class_labels, label_input=True)
@@ -1077,8 +1084,9 @@ class ORGAN(object):
                         self.sess, samples, rewards, class_labels)
                     losses['G-loss'].append(g_loss)
                     self.generator.g_count = self.generator.g_count + 1
+                    self.report_rewards(rewards, 'classify')
                 
-            t_bar.set_postfix(G_loss=np.mean(losses['G-loss']))
+            # t_bar.set_postfix(G_loss=np.mean(losses['G-loss']))
             self.class_rollout.update_params()
 
             if self.LAMBDA_C != 0:
